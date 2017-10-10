@@ -72,6 +72,10 @@ enum {
     VIRT_GPIO,
     VIRT_SECURE_UART,
     VIRT_SECURE_MEM,
+#ifdef CONFIG_NVDLA
+    VIRT_NVDLA,
+    VIRT_EXTMEM,
+#endif
 };
 
 typedef struct MemMapEntry {

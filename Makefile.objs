@@ -176,3 +176,11 @@ trace-obj-y += $(trace-events-subdirs:%=%/trace.o)
 trace-obj-$(CONFIG_TRACE_UST) += trace-ust-all.o
 trace-obj-$(CONFIG_TRACE_DTRACE) += trace-dtrace-root.o
 trace-obj-$(CONFIG_TRACE_DTRACE) += $(trace-events-subdirs:%=%/trace-dtrace.o)
+
+# qbox and nvdla stuff
+ifeq ($(CONFIG_QBOX),y)
+target-obj-$(CONFIG_NVDLA) += qbox/
+qbox-nvdla-obj-$(CONFIG_NVDLA) += nvdla/
+qbox-nvdla-obj-$(CONFIG_NVDLA) += hw/
+qbox-nvdla-obj-$(CONFIG_NVDLA) += qbox/
+endif

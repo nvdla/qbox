@@ -39,10 +39,12 @@
 #if defined(__APPLE__) || defined(main)
 #include <SDL.h>
 int qemu_main(int argc, char **argv, char **envp);
+#ifndef BUILD_LIBRARY
 int main(int argc, char **argv)
 {
     return qemu_main(argc, argv, NULL);
 }
+#endif
 #undef main
 #define main qemu_main
 #endif
@@ -190,6 +192,16 @@ size_t boot_splash_filedata_size;
 uint8_t qemu_extra_params_fw[2];
 
 int icount_align_option;
+
+#ifdef CONFIG_QBOX
+#include "qbox/qboxbase.h"
+void iothread_init(int argc, char **argv, char **env);
+static int gbl_argc;
+static char **gbl_argv;
+static char **gbl_envp;
+static QemuThread iothread;
+void *qemu_iothread_fn(void *opaque);
+#endif /* CONFIG_QBOX */
 
 /* The bytes in qemu_uuid are in the order specified by RFC4122, _not_ in the
  * little-endian "wire format" described in the SMBIOS 2.6 specification.
@@ -2991,8 +3003,29 @@ static void register_global_properties(MachineState *ms)
     user_register_global_props();
 }
 
+#ifdef CONFIG_QBOX
+/*
+ * Don't build main in case of qbox, as it will be in the simulator.
+ * This function is called in qboxbase.c.
+ */
+void iothread_init(int argc, char **argv, char **envp)
+{
+    gbl_argc = argc;
+    gbl_argv = argv;
+    gbl_envp = envp;
+
+    qemu_thread_create(&iothread, "io_thread", qemu_iothread_fn, NULL,
+                       QEMU_THREAD_JOINABLE);
+}
+
+void *qemu_iothread_fn(void *opaque)
+{
+    int argc = gbl_argc;
+    char **argv = gbl_argv;
+#else
 int main(int argc, char **argv, char **envp)
 {
+#endif
     int i;
     int snapshot, linux_boot;
     const char *initrd_filename;
@@ -3651,7 +3684,11 @@ int main(int argc, char **argv, char **envp)
             case QEMU_OPTION_watchdog:
                 if (watchdog) {
                     error_report("only one watchdog option may be given");
+#ifdef CONFIG_QBOX
+                    exit(1);
+#else
                     return 1;
+#endif
                 }
                 watchdog = optarg;
                 break;
@@ -4618,6 +4655,10 @@ int main(int argc, char **argv, char **envp)
             exit (i == 1 ? 1 : 0);
     }
 
+#ifdef CONFIG_QBOX
+    qbox_init_quantum_timer();
+#endif
+
     /* This checkpoint is required by replay to separate prior clock
        reading from the other reads, because timer polling functions query
        clock values from the log. */
@@ -4772,7 +4813,11 @@ int main(int argc, char **argv, char **envp)
     if (vmstate_dump_file) {
         /* dump and exit */
         dump_vmstate_json_to_file(vmstate_dump_file);
+#ifdef CONFIG_QBOX
+        exit(0);
+#else
         return 0;
+#endif
     }
 
     if (incoming) {
@@ -4803,5 +4848,10 @@ int main(int argc, char **argv, char **envp)
     qemu_chr_cleanup();
     /* TODO: unref root container, check all devices are ok */
 
+#ifdef CONFIG_QBOX
+    qbox_exit();
+    exit(0);
+#else
     return 0;
+#endif
 }

@@ -1,0 +1,1 @@
+qbox-nvdla-obj-y += nvdla.o

@@ -57,6 +57,10 @@
 #include "qapi/visitor.h"
 #include "standard-headers/linux/input.h"
 
+#ifdef CONFIG_NVDLA
+#include "qbox/qboxbase.h"
+#endif
+
 #define DEFINE_VIRT_MACHINE_LATEST(major, minor, latest) \
     static void virt_##major##_##minor##_class_init(ObjectClass *oc, \
                                                     void *data) \
@@ -149,6 +153,11 @@ static const MemMapEntry a15memmap[] = {
     [VIRT_MEM] =                { 0x40000000, RAMLIMIT_BYTES },
     /* Second PCIe window, 512GB wide at the 512GB boundary */
     [VIRT_PCIE_MMIO_HIGH] =   { 0x8000000000ULL, 0x8000000000ULL },
+#ifdef CONFIG_NVDLA
+    /* NVDLA stub */
+    [VIRT_NVDLA] =              { 0x10200000, 0x00020000 },
+    [VIRT_EXTMEM] =             { 0xC0000000, 0x40000000 },
+#endif
 };
 
 static const int a15irqmap[] = {
@@ -160,6 +169,10 @@ static const int a15irqmap[] = {
     [VIRT_MMIO] = 16, /* ...to 16 + NUM_VIRTIO_TRANSPORTS - 1 */
     [VIRT_GIC_V2M] = 48, /* ...to 48 + NUM_GICV2M_SPIS - 1 */
     [VIRT_PLATFORM_BUS] = 112, /* ...to 112 + PLATFORM_BUS_NUM_IRQS -1 */
+#ifdef CONFIG_NVDLA
+    /* NVDLA stub */
+    [VIRT_NVDLA] = 176,
+#endif
 };
 
 static const char *valid_cpus[] = {
@@ -1169,6 +1182,59 @@ static void create_secure_ram(VirtMachineState *vms,
     g_free(nodename);
 }
 
+#ifdef CONFIG_NVDLA
+static void create_nvdla(const VirtMachineState *vms, qemu_irq *pic)
+{
+    char *nodename;
+    hwaddr base = vms->memmap[VIRT_NVDLA].base;
+    hwaddr size = vms->memmap[VIRT_NVDLA].size;
+    int irq = vms->irqmap[VIRT_NVDLA];
+
+#ifndef NVDLA_HW_VERSION
+#error "NVDLA_HW_VERSION must be defined!"
+#endif
+#define TO_STRING(x) #x
+#define MACRO2STRING(x) TO_STRING(x)
+    char* compat = g_strdup_printf("nvidia,%s", MACRO2STRING(NVDLA_HW_VERSION));
+#undef TO_STRING
+#undef MACRO2STRING
+
+    DeviceState *dev = qdev_create(NULL, "nvdla");
+    SysBusDevice *s = SYS_BUS_DEVICE(dev);
+    qdev_init_nofail(dev);
+
+    sysbus_connect_irq(s, 0, pic[irq]);
+
+    nodename = g_strdup_printf("/nvdla@%" PRIx64, base);
+    qemu_fdt_add_subnode(vms->fdt, nodename);
+    qemu_fdt_setprop(vms->fdt, nodename, "compatible", compat, 1+strlen(compat));
+    qemu_fdt_setprop_sized_cells(vms->fdt, nodename, "reg",
+                                 2, base, 2, size);
+    qemu_fdt_setprop_cells(vms->fdt, nodename, "interrupts",
+                           GIC_FDT_IRQ_TYPE_SPI, irq,
+                           GIC_FDT_IRQ_FLAGS_LEVEL_HI);
+    g_free(nodename);
+    g_free(compat);
+
+    qbox_export_irq(qbox_get_handle(), pic, NUM_IRQS);
+}
+
+static void create_extmem(const VirtMachineState *vms)
+{
+    char *nodename;
+    hwaddr base = vms->memmap[VIRT_EXTMEM].base;
+    hwaddr size = vms->memmap[VIRT_EXTMEM].size;
+    const char compat[] = "nvidia,nvdla-extmem";
+
+    nodename = g_strdup_printf("/extmem@%" PRIx64, base);
+    qemu_fdt_add_subnode(vms->fdt, nodename);
+    qemu_fdt_setprop(vms->fdt, nodename, "compatible", compat, sizeof(compat));
+    qemu_fdt_setprop_sized_cells(vms->fdt, nodename, "reg", 2, base, 2, size);
+
+    g_free(nodename);
+}
+#endif
+
 static void *machvirt_dtb(const struct arm_boot_info *binfo, int *fdt_size)
 {
     const VirtMachineState *board = container_of(binfo, VirtMachineState,
@@ -1451,6 +1517,11 @@ static void machvirt_init(MachineState *machine)
     create_pcie(vms, pic);
 
     create_gpio(vms, pic);
+
+#ifdef CONFIG_NVDLA
+    create_nvdla(vms, pic);
+    create_extmem(vms);
+#endif
 
     /* Create mmio transports, so the user can create virtio backends
      * (which will be automatically plugged in to the transports). If

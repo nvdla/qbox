@@ -1,0 +1,4 @@
+target-obj-y += qboxbase.o
+ifeq ($(CONFIG_NVDLA),y)
+qbox-nvdla-obj-y += qbox_aarch64.o
+endif

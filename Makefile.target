@@ -21,7 +21,12 @@ QEMU_PROG=qemu-$(TARGET_NAME)
 QEMU_PROG_BUILD = $(QEMU_PROG)
 else
 # system emulator name
+ifdef BUILD_LIBRARY
+LDFLAGS += -shared
+QEMU_PROG=libqemu-system-$(TARGET_NAME).so
+else
 QEMU_PROG=qemu-system-$(TARGET_NAME)$(EXESUF)
+endif
 ifneq (,$(findstring -mwindows,$(libs_softmmu)))
 # Terminate program name with a 'w' because the linker builds a windows executable.
 QEMU_PROGW=qemu-system-$(TARGET_NAME)w$(EXESUF)
@@ -38,6 +43,13 @@ STPFILES=
 
 config-target.h: config-target.h-timestamp
 config-target.h-timestamp: config-target.mak
+
+ifdef CONFIG_QBOX
+ifdef CONFIG_NVDLA
+# Compile QBOX-NVDLA
+QBOX_PROGS=libqbox-nvdla$(DSOSUF)
+endif
+endif
 
 ifdef CONFIG_TRACE_SYSTEMTAP
 stap: $(QEMU_PROG).stp-installed $(QEMU_PROG).stp $(QEMU_PROG)-simpletrace.stp
@@ -84,7 +96,7 @@ stap:
 endif
 .PHONY: stap
 
-all: $(PROGS) stap
+all: $(PROGS) $(QBOX_PROGS) stap
 
 # Dummy command so that make thinks it has done something
 	@true
@@ -169,7 +181,14 @@ target-obj-y :=
 block-obj-y :=
 common-obj-y :=
 chardev-obj-y :=
+qbox-nvdla-obj-y :=
 include $(SRC_PATH)/Makefile.objs
+qbox-nvdla-obj-y-save := $(qbox-nvdla-obj-y)
+target-obj-y-save := $(target-obj-y)
+qbox-nvdla-obj-y := $(qbox-nvdla-obj-y-save)
+dummy := $(call unnest-vars,,qbox-nvdla-obj-y)
+qbox-nvdla-obj-y-save := $(qbox-nvdla-obj-y)
+target-obj-y := $(target-obj-y-save)
 dummy := $(call unnest-vars,,target-obj-y)
 target-obj-y-save := $(target-obj-y)
 dummy := $(call unnest-vars,.., \
@@ -183,6 +202,7 @@ dummy := $(call unnest-vars,.., \
                common-obj-y \
                common-obj-m)
 target-obj-y := $(target-obj-y-save)
+qbox-nvdla-obj-y := $(qbox-nvdla-obj-y-save)
 all-obj-y += $(common-obj-y)
 all-obj-y += $(target-obj-y)
 all-obj-y += $(qom-obj-y)
@@ -202,6 +222,11 @@ ifdef CONFIG_DARWIN
 	$(call quiet-command,Rez -append $(SRC_PATH)/pc-bios/qemu.rsrc -o $@,"REZ","$(TARGET_DIR)$@")
 	$(call quiet-command,SetFile -a C $@,"SETFILE","$(TARGET_DIR)$@")
 endif
+
+# build qboxes
+libqbox-nvdla$(DSOSUF): $(all-obj-y) $(qbox-nvdla-obj-y) \
+                             $(COMMON_LDADDS)
+	$(call LINK,$^)
 
 gdbstub-xml.c: $(TARGET_XML_FILES) $(SRC_PATH)/scripts/feature_to_c.sh
 	$(call quiet-command,rm -f $@ && $(SHELL) $(SRC_PATH)/scripts/feature_to_c.sh $@ $(TARGET_XML_FILES),"GEN","$(TARGET_DIR)$@")

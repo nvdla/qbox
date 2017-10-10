@@ -405,6 +405,9 @@ tcmalloc="no"
 jemalloc="no"
 replication="yes"
 vxhs=""
+library="no"
+qbox="no"
+nvdla="no"
 
 supported_cpu="no"
 supported_os="no"
@@ -833,6 +836,14 @@ for opt do
   optarg=$(expr "x$opt" : 'x[^=]*=\(.*\)')
   case "$opt" in
   --help|-h) show_help=yes
+  ;;
+  --library) library=yes
+  ;;
+  --qbox) qbox="yes"
+  ;;
+  --with-tlm2c=*) tlm2cdir="$optarg"
+  ;;
+  --nvdla) nvdla="yes"
   ;;
   --version|-V) exec cat $source_path/VERSION
   ;;
@@ -1352,6 +1363,30 @@ case "$cpu" in
            ;;
     # No special flags required for other host CPUs
 esac
+
+if [ "$library" != "no" ] && [ "$mingw32" != "yes" ] ; then
+    QEMU_CFLAGS="$QEMU_CFLAGS -fPIC"
+fi
+
+if test "$qbox" = "yes" ; then
+    tlm2cdir=`eval echo $tlm2cdir`
+    if [ ! -e "$tlm2cdir/include/tlm2c" ]; then
+        error_exit "unable to find GreenSocs tlm2c library."                   \
+                   "try to specify the path with: '--with-tlm2c=*'."
+    fi
+    QEMU_CFLAGS="$QEMU_CFLAGS -I$tlm2cdir/include"
+    libs_softmmu="-L$tlm2cdir/lib -ltlm2c $libs_softmmu"
+fi
+
+if test "$qbox" = "yes" ; then
+    tlm2cdir=`eval echo $tlm2cdir`
+    if [ ! -e "$tlm2cdir/include/tlm2c" ]; then
+        error_exit "unable to find GreenSocs tlm2c library."                   \
+                   "try to specify the path with: '--with-tlm2c=*'."
+    fi
+    QEMU_CFLAGS="$QEMU_CFLAGS -I$tlm2cdir/include"
+    libs_softmmu="-L$tlm2cdir/lib -ltlm2c $libs_softmmu"
+fi
 
 QEMU_CFLAGS="$CPU_CFLAGS $QEMU_CFLAGS"
 EXTRA_CFLAGS="$CPU_CFLAGS $EXTRA_CFLAGS"
@@ -5391,6 +5426,11 @@ echo "coroutine pool    $coroutine_pool"
 echo "debug stack usage $debug_stack_usage"
 echo "crypto afalg      $crypto_afalg"
 echo "GlusterFS support $glusterfs"
+echo "GreenSocs qbox    $qbox"
+if test "$qbox" = "yes"; then
+    echo "GreenSocs tlm2c   $tlm2cdir"
+fi
+echo "Nvidia nvdla      $nvdla"
 echo "gcov              $gcov_tool"
 echo "gcov enabled      $gcov"
 echo "TPM support       $tpm"
@@ -5966,6 +6006,14 @@ if test "$glusterfs_zerofill" = "yes" ; then
   echo "CONFIG_GLUSTERFS_ZEROFILL=y" >> $config_host_mak
 fi
 
+if test "$qbox" = "yes"; then
+  echo "CONFIG_QBOX=y" >> $config_host_mak
+fi
+
+if test "$nvdla" = "yes"; then
+  echo "CONFIG_NVDLA=y" >> $config_host_mak
+fi
+
 if test "$libssh2" = "yes" ; then
   echo "CONFIG_LIBSSH2=m" >> $config_host_mak
   echo "LIBSSH2_CFLAGS=$libssh2_cflags" >> $config_host_mak
@@ -6223,6 +6271,10 @@ bflt="no"
 mttcg="no"
 interp_prefix1=$(echo "$interp_prefix" | sed "s/%M/$target_name/g")
 gdb_xml_files=""
+
+if test "$library" = "yes" ; then
+    echo "BUILD_LIBRARY=y" >> $config_target_mak
+fi
 
 TARGET_ARCH="$target_name"
 TARGET_BASE_ARCH=""

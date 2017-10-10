@@ -1108,6 +1108,7 @@ static void iommu_memory_region_initfn(Object *obj)
     mr->is_iommu = true;
 }
 
+
 static uint64_t unassigned_mem_read(void *opaque, hwaddr addr,
                                     unsigned size)
 {
@@ -1130,6 +1131,20 @@ static void unassigned_mem_write(void *opaque, hwaddr addr,
         cpu_unassigned_access(current_cpu, addr, true, false, 0, size);
     }
 }
+
+#ifdef CONFIG_QBOX
+uint64_t qbox_unassigned_mem_read(void *opaque, hwaddr addr,
+                                  unsigned size)
+{
+    return  unassigned_mem_read(opaque, addr, size);
+}
+
+void qbox_unassigned_mem_write(void *opaque, hwaddr addr,
+                               uint64_t val, unsigned size)
+{
+    unassigned_mem_write(opaque, addr, val, size);
+}
+#endif
 
 static bool unassigned_mem_accepts(void *opaque, hwaddr addr,
                                    unsigned size, bool is_write)
@@ -1461,6 +1476,19 @@ void memory_region_init_ram_device_ptr(MemoryRegion *mr,
     mr->ops = &ram_device_mem_ops;
     mr->opaque = mr;
 }
+
+#ifdef CONFIG_QBOX
+MemoryRegion *memory_region_create_ram_ptr(const char *name,
+                                           uint64_t size,
+                                           uint64_t offset,
+                                           void *ptr)
+{
+    MemoryRegion *ram = g_new(MemoryRegion, 1);
+    memory_region_init_ram_ptr(ram, NULL, name, size, ptr);
+    memory_region_add_subregion(get_system_memory(), offset, ram);
+    return ram;
+}
+#endif
 
 void memory_region_init_alias(MemoryRegion *mr,
                               Object *owner,
