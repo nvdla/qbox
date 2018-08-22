@@ -1193,9 +1193,27 @@ static void create_nvdla(const VirtMachineState *vms, qemu_irq *pic)
 #ifndef NVDLA_HW_VERSION
 #error "NVDLA_HW_VERSION must be defined!"
 #endif
+#ifndef NVDLA_HW_PROJECT
+#error "NVDLA_HW_PROJECT must be defined!"
+#endif
 #define TO_STRING(x) #x
 #define MACRO2STRING(x) TO_STRING(x)
-    char* compat = g_strdup_printf("nvidia,%s", MACRO2STRING(NVDLA_HW_VERSION));
+    char* compat = g_strdup_printf("nvidia,%s%cnvidia,%s", MACRO2STRING(NVDLA_HW_VERSION), '\0', MACRO2STRING(NVDLA_HW_PROJECT));
+    int i = 0;
+    int compat_sz = 0;
+    char *pch;
+    pch=strchr(compat,'\0');
+
+    while(pch != NULL)
+    {
+        if (i == 1)
+        {
+            compat_sz = pch - compat + 1;
+            break;
+        }
+        pch = strchr(pch+1,'\0');
+        i++;
+    }
 #undef TO_STRING
 #undef MACRO2STRING
 
@@ -1207,7 +1225,7 @@ static void create_nvdla(const VirtMachineState *vms, qemu_irq *pic)
 
     nodename = g_strdup_printf("/nvdla@%" PRIx64, base);
     qemu_fdt_add_subnode(vms->fdt, nodename);
-    qemu_fdt_setprop(vms->fdt, nodename, "compatible", compat, 1+strlen(compat));
+    qemu_fdt_setprop(vms->fdt, nodename, "compatible", compat, compat_sz);
     qemu_fdt_setprop_sized_cells(vms->fdt, nodename, "reg",
                                  2, base, 2, size);
     qemu_fdt_setprop_cells(vms->fdt, nodename, "interrupts",
